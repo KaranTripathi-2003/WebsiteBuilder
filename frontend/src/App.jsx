@@ -1,14 +1,27 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import "./App.css";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const EXAMPLE_PROMPTS = [
-  "🚀 SaaS landing page for a productivity app",
-  "🎨 Portfolio for a UI/UX designer",
-  "📋 Contact form with modern card design",
-  "🛒 E-commerce product page for sneakers",
-  "📊 Dashboard with stats and charts",
+  "🚀 SaaS landing page for an AI productivity app",
+  "🎨 Portfolio for a motion designer",
+  "☕ Landing page for a premium coffee shop",
+  "🛒 E-commerce product page for luxury sneakers",
+  "🏋️ Fitness studio website with class schedules",
+];
+
+const LOADING_STAGES = [
+  { label: "Thinking...", icon: "🧠", duration: 1200 },
+  { label: "Writing code...", icon: "⌨️", duration: 2000 },
+  { label: "Styling...", icon: "🎨", duration: 1500 },
+  { label: "Rendering...", icon: "✨", duration: 800 },
+];
+
+const DEVICES = [
+  { id: "desktop", icon: "🖥️", label: "Desktop", width: "100%" },
+  { id: "tablet", icon: "📱", label: "Tablet", width: "768px" },
+  { id: "mobile", icon: "📲", label: "Mobile", width: "375px" },
 ];
 
 function App() {
@@ -23,10 +36,13 @@ function App() {
   const [currentSite, setCurrentSite] = useState(null);
   const [versions, setVersions] = useState([]);
   const [activeVersion, setActiveVersion] = useState(null);
-  const [showCode, setShowCode] = useState(false);
   const [activeTab, setActiveTab] = useState("preview");
+  const [device, setDevice] = useState("desktop");
+  const [loadingStage, setLoadingStage] = useState(0);
+  const [streamProgress, setStreamProgress] = useState(0);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const stageTimerRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,6 +64,25 @@ ${site.html}
 </html>`;
   };
 
+  const advanceLoadingStage = useCallback(() => {
+    setLoadingStage(0);
+    let stage = 0;
+    const advance = () => {
+      stage++;
+      if (stage < LOADING_STAGES.length) {
+        setLoadingStage(stage);
+        stageTimerRef.current = setTimeout(advance, LOADING_STAGES[stage].duration);
+      }
+    };
+    stageTimerRef.current = setTimeout(advance, LOADING_STAGES[0].duration);
+  }, []);
+
+  const stopLoadingStage = useCallback(() => {
+    clearTimeout(stageTimerRef.current);
+    setLoadingStage(0);
+    setStreamProgress(0);
+  }, []);
+
   const handleSend = async (messageText) => {
     const msg = (messageText || input).trim();
     if (!msg || isLoading) return;
@@ -57,9 +92,10 @@ ${site.html}
 
     setMessages((prev) => [...prev, { role: "user", text: msg }]);
     setIsLoading(true);
+    advanceLoadingStage();
 
     try {
-      const res = await fetch(`${API_URL}/generate`, {
+      const res = await fetch(`${API_URL}/generate/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -76,23 +112,61 @@ ${site.html}
         throw new Error(err.detail || "Generation failed");
       }
 
-      const site = await res.json();
-      setCurrentSite(site);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let charCount = 0;
 
-      const newVersion = { ...site, prompt: msg, timestamp: new Date() };
-      setVersions((prev) => [...prev, newVersion]);
-      setActiveVersion(newVersion);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: isRefinement
-            ? `✅ Updated! I refined the site based on your request. You can keep refining or start fresh.`
-            : `✅ Built **${site.title}**! You can now refine it — just describe what to change.`,
-          site,
-        },
-      ]);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          try {
+            const event = JSON.parse(raw);
+
+            if (event.type === "chunk") {
+              charCount += event.text.length;
+              setStreamProgress(Math.min(90, Math.round((charCount / 5000) * 90)));
+            }
+
+            if (event.type === "done") {
+              const site = event.site;
+              setStreamProgress(100);
+              setCurrentSite(site);
+              const newVersion = { ...site, prompt: msg, timestamp: new Date() };
+              setVersions((prev) => [...prev, newVersion]);
+              setActiveVersion(newVersion);
+              setActiveTab("preview");
+
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  text: isRefinement
+                    ? `✅ Updated! Refined based on your request.`
+                    : `✅ Built **${site.title}**! Refine it or download below.`,
+                  site,
+                },
+              ]);
+            }
+
+            if (event.type === "error") {
+              throw new Error(event.message);
+            }
+          } catch (parseErr) {
+            // skip malformed SSE line
+          }
+        }
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -103,6 +177,7 @@ ${site.html}
         },
       ]);
     } finally {
+      stopLoadingStage();
       setIsLoading(false);
     }
   };
@@ -123,6 +198,7 @@ ${site.html}
     setCurrentSite(null);
     setVersions([]);
     setActiveVersion(null);
+    setActiveTab("preview");
     setMessages([
       {
         role: "assistant",
@@ -131,11 +207,24 @@ ${site.html}
     ]);
   };
 
+  const downloadHTML = () => {
+    if (!currentSite) return;
+    const blob = new Blob([buildFullHTML(currentSite)], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentSite.title.replace(/\s+/g, "-").toLowerCase()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const copyCode = () => {
     if (currentSite) {
       navigator.clipboard.writeText(buildFullHTML(currentSite));
     }
   };
+
+  const currentDevice = DEVICES.find((d) => d.id === device);
 
   return (
     <div className="app">
@@ -151,14 +240,26 @@ ${site.html}
         <div className="header-right">
           {currentSite && (
             <>
-              <button className="btn btn-ghost" onClick={() => setShowCode(!showCode)}>
-                {showCode ? "Hide Code" : "View Code"}
-              </button>
+              <div className="device-switcher">
+                {DEVICES.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`device-btn ${device === d.id ? "device-btn--active" : ""}`}
+                    onClick={() => setDevice(d.id)}
+                    title={d.label}
+                  >
+                    {d.icon}
+                  </button>
+                ))}
+              </div>
               <button className="btn btn-ghost" onClick={copyCode}>
-                Copy HTML
+                Copy
+              </button>
+              <button className="btn btn-ghost btn-download" onClick={downloadHTML}>
+                ↓ Download
               </button>
               <button className="btn btn-primary" onClick={handleNewSite}>
-                + New Site
+                + New
               </button>
             </>
           )}
@@ -170,36 +271,38 @@ ${site.html}
         <div className="chat-panel">
           <div className="messages">
             {messages.map((m, i) => (
-              <div key={i} className={`message message--${m.role} ${m.isError ? "message--error" : ""}`}>
-                {m.role === "assistant" && (
-                  <div className="avatar">⚡</div>
-                )}
+              <div
+                key={i}
+                className={`message message--${m.role} ${m.isError ? "message--error" : ""}`}
+              >
+                {m.role === "assistant" && <div className="avatar">⚡</div>}
                 <div className="bubble">
                   {m.text.split("**").map((part, j) =>
                     j % 2 === 1 ? <strong key={j}>{part}</strong> : part
                   )}
                 </div>
-                {m.role === "user" && (
-                  <div className="avatar avatar--user">U</div>
-                )}
+                {m.role === "user" && <div className="avatar avatar--user">U</div>}
               </div>
             ))}
 
             {isLoading && (
               <div className="message message--assistant">
-                <div className="avatar">⚡</div>
+                <div className="avatar avatar--pulse">⚡</div>
                 <div className="bubble bubble--loading">
-                  <span className="dot" />
-                  <span className="dot" />
-                  <span className="dot" />
-                  <span className="loading-text">Generating your site...</span>
+                  <div className="loading-stage">
+                    <span className="loading-stage-icon">{LOADING_STAGES[loadingStage].icon}</span>
+                    <span className="loading-stage-label">{LOADING_STAGES[loadingStage].label}</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-bar-fill" style={{ width: `${streamProgress}%` }} />
+                  </div>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Example prompts — show only when no site yet */}
+          {/* Example prompts */}
           {!currentSite && !isLoading && (
             <div className="examples">
               {EXAMPLE_PROMPTS.map((p, i) => (
@@ -225,7 +328,7 @@ ${site.html}
                     className={`version-chip ${activeVersion === v ? "active" : ""}`}
                     onClick={() => handleVersionClick(v)}
                   >
-                    v{i + 1}: {v.prompt.slice(0, 28)}…
+                    v{i + 1}: {v.prompt.slice(0, 24)}…
                   </button>
                 ))}
               </div>
@@ -240,7 +343,7 @@ ${site.html}
               rows={2}
               placeholder={
                 currentSite
-                  ? "Refine: change colors, add a section, update text…"
+                  ? "Refine: change colors, add section, update text…"
                   : "Describe the website you want to build…"
               }
               value={input}
@@ -263,40 +366,32 @@ ${site.html}
           {currentSite ? (
             <>
               <div className="preview-tabs">
-                <button
-                  className={`tab ${activeTab === "preview" ? "tab--active" : ""}`}
-                  onClick={() => setActiveTab("preview")}
-                >
-                  Preview
-                </button>
-                <button
-                  className={`tab ${activeTab === "html" ? "tab--active" : ""}`}
-                  onClick={() => setActiveTab("html")}
-                >
-                  HTML
-                </button>
-                <button
-                  className={`tab ${activeTab === "css" ? "tab--active" : ""}`}
-                  onClick={() => setActiveTab("css")}
-                >
-                  CSS
-                </button>
-                <button
-                  className={`tab ${activeTab === "js" ? "tab--active" : ""}`}
-                  onClick={() => setActiveTab("js")}
-                >
-                  JS
-                </button>
+                {["preview", "html", "css", "js"].map((tab) => (
+                  <button
+                    key={tab}
+                    className={`tab ${activeTab === tab ? "tab--active" : ""}`}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {tab.toUpperCase()}
+                  </button>
+                ))}
                 <div className="site-title-badge">{currentSite.title}</div>
               </div>
 
               {activeTab === "preview" && (
-                <iframe
-                  className="preview-frame"
-                  title="Generated Site"
-                  srcDoc={buildFullHTML(currentSite)}
-                  sandbox="allow-scripts allow-same-origin"
-                />
+                <div className="preview-viewport">
+                  <div
+                    className="preview-frame-wrapper"
+                    style={{ width: currentDevice.width }}
+                  >
+                    <iframe
+                      className="preview-frame"
+                      title="Generated Site"
+                      srcDoc={buildFullHTML(currentSite)}
+                      sandbox="allow-scripts allow-same-origin"
+                    />
+                  </div>
+                </div>
               )}
 
               {activeTab !== "preview" && (
@@ -326,7 +421,3 @@ ${site.html}
 }
 
 export default App;
-
-
-
-
