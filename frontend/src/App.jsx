@@ -54,9 +54,9 @@ function buildFullHTML(site) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet"/>
   <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet"/>
-  <script src="https://cdn.tailwindcss.com"><\/script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"><\/script>
-  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"><\/script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
   <style>
     body { font-family: 'DM Sans', sans-serif; }
     h1, h2, h3 { font-family: 'DM Sans', sans-serif; }
@@ -136,7 +136,7 @@ ${html}
 try {
   ${js}
 } catch(e) { console.warn('Site JS error:', e); }
-<\/script>
+</script>
 </body>
 </html>`;
 }
