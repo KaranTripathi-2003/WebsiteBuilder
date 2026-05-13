@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import "./App.css";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 
+// ── Constants ──────────────────────────────────────────────────────────────
 const EXAMPLE_PROMPTS = [
   { emoji: "🚀", label: "SaaS landing page for an AI productivity app" },
   { emoji: "🎨", label: "Portfolio for a motion designer" },
@@ -11,10 +13,6 @@ const EXAMPLE_PROMPTS = [
   { emoji: "🏋️", label: "Fitness studio website with class schedules" },
   { emoji: "🏠", label: "Real estate agency with property listings" },
 ];
-
-
-
-
 
 const LOADING_STAGES = [
   { label: "Thinking...",    icon: "🧠", duration: 1200 },
@@ -29,20 +27,180 @@ const DEVICES = [
   { id: "mobile",  icon: "📲", label: "Mobile",  width: "375px" },
 ];
 
-const NAV_ITEMS = [
-  { id: "new",       icon: "✦",  label: "New Project" },
-  { id: "sites",     icon: "⊞",  label: "My Sites"    },
-  { id: "templates", icon: "⊟",  label: "Templates"   },
-];
+// ── Storage helpers ────────────────────────────────────────────────────────
+const storage = {
+  get:    (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set:    (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+  remove: (k) => localStorage.removeItem(k),
+};
 
+// ── Google SDK loader ──────────────────────────────────────────────────────
+function loadGoogleScript() {
+  return new Promise((resolve) => {
+    if (window.google) return resolve();
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.defer = true;
+    s.onload = resolve;
+    document.head.appendChild(s);
+  });
+}
 
+// ══════════════════════════════════════════════════════════════════════════
+// AUTH PAGE
+// ══════════════════════════════════════════════════════════════════════════
+function AuthPage({ onAuth }) {
+  const [mode,    setMode]    = useState("login");
+  const [name,    setName]    = useState("");
+  const [email,   setEmail]   = useState("");
+  const [pass,    setPass]    = useState("");
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+  const googleBtnRef = useRef(null);
 
-function App() {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      text: "Hi! I'm WebWeave. Let's build your website!\n\nAsk me anything about building your site!",
-    },
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    loadGoogleScript().then(() => {
+      if (!window.google || !googleBtnRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+      });
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: "outline", size: "large", width: "100%", text: "continue_with",
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  const handleGoogleCredential = async (response) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res  = await fetch(`${API_URL}/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: response.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Google sign-in failed");
+      storage.set("ww_token", data.token);
+      storage.set("ww_user",  data.user);
+      onAuth(data.user, data.token);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(""); setLoading(true);
+    try {
+      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+      const body     = mode === "login"
+        ? { email, password: pass }
+        : { name, email, password: pass };
+      const res  = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Auth failed");
+      storage.set("ww_token", data.token);
+      storage.set("ww_user",  data.user);
+      onAuth(data.user, data.token);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <span className="auth-logo-icon">W</span>
+          <span className="auth-logo-text">WebWeave</span>
+        </div>
+        <h1 className="auth-title">
+          {mode === "login" ? "Welcome back" : "Create your account"}
+        </h1>
+        <p className="auth-subtitle">
+          {mode === "login"
+            ? "Sign in to continue building stunning websites"
+            : "Start building beautiful websites with AI"}
+        </p>
+
+        {GOOGLE_CLIENT_ID && (
+          <div className="auth-google-wrap">
+            <div ref={googleBtnRef} />
+          </div>
+        )}
+        {!GOOGLE_CLIENT_ID && (
+          <button className="auth-google-btn" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Continue with Google
+          </button>
+        )}
+
+        <div className="auth-divider"><span>or</span></div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {mode === "signup" && (
+            <div className="auth-field">
+              <label>Full Name</label>
+              <input type="text" placeholder="Jane Smith" value={name}
+                onChange={e => setName(e.target.value)} required />
+            </div>
+          )}
+          <div className="auth-field">
+            <label>Email</label>
+            <input type="email" placeholder="you@example.com" value={email}
+              onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="auth-field">
+            <label>Password</label>
+            <input type="password" placeholder="••••••••" value={pass}
+              onChange={e => setPass(e.target.value)} required minLength={6} />
+          </div>
+          <button type="submit" className="auth-submit" disabled={loading}>
+            {loading ? "Please wait…" : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+
+        <p className="auth-switch">
+          {mode === "login" ? "Don't have an account?" : "Already have an account?"}
+          {" "}
+          <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}>
+            {mode === "login" ? "Sign up" : "Sign in"}
+          </button>
+        </p>
+      </div>
+
+      <div className="auth-bg-orb auth-bg-orb--1" />
+      <div className="auth-bg-orb auth-bg-orb--2" />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════════════════════
+function MainApp({ user, token, onLogout }) {
+  const [messages,       setMessages]       = useState([
+    { role: "assistant", text: "Hi! I'm WebWeave, your intelligent website creation partner. Tell me your project goal, and I'll build it instantly!" },
   ]);
   const [input,          setInput]          = useState("");
   const [isLoading,      setIsLoading]      = useState(false);
@@ -53,15 +211,34 @@ function App() {
   const [device,         setDevice]         = useState("desktop");
   const [loadingStage,   setLoadingStage]   = useState(0);
   const [streamProgress, setStreamProgress] = useState(0);
-  const [navActive,      setNavActive]      = useState("new");
   const [previewUrl,     setPreviewUrl]     = useState(null);
+  const [projectId,      setProjectId]      = useState(null);
+  const [projects,       setProjects]       = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [userMenuOpen,   setUserMenuOpen]   = useState(false);
 
   const messagesEndRef = useRef(null);
   const stageTimerRef  = useRef(null);
 
+  const authHeaders = useMemo(() => ({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`
+  }), [token]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const loadProjects = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/projects`, { headers: authHeaders });
+      if (res.ok) setProjects(await res.json());
+    } catch (_) {}
+    setHistoryLoading(false);
+  }, [authHeaders]);
+
+  useEffect(() => { loadProjects(); }, [loadProjects]);
 
   const buildFullHTML = (site) => `<!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -70,12 +247,9 @@ function App() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="referrer" content="no-referrer"/>
   <title>${site.title}</title>
-  <!-- Google Fonts preconnect -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"><\/script>
-  <!-- Alpine.js CDN -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"><\/script>
   <style>${site.css}<\/style>
 </head>
@@ -85,12 +259,8 @@ ${site.html}
 </body>
 </html>`;
 
-  // Build blob URL so external images + fonts load (srcDoc has null-origin which blocks them)
   useEffect(() => {
-    if (!currentSite) {
-      setPreviewUrl(null);
-      return;
-    }
+    if (!currentSite) { setPreviewUrl(null); return; }
     const html = buildFullHTML(currentSite);
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     const url  = URL.createObjectURL(blob);
@@ -119,11 +289,8 @@ ${site.html}
   }, []);
 
   const handleSend = async (messageText) => {
-    const baseMsg  = (messageText || input).trim();
+    const baseMsg = (messageText || input).trim();
     if (!baseMsg || isLoading) return;
-
-    // Build prompt
-    const msg = `${baseMsg}. Generate a MULTI-PAGE website (Home, About, Services/Menu/Products, Contact pages) using <!-- PAGE: Name --> markers to separate each page.`;
 
     setInput("");
     const isRefinement = !!currentSite;
@@ -131,16 +298,20 @@ ${site.html}
     setIsLoading(true);
     advanceLoadingStage();
 
+    const pid = projectId || `proj_${Date.now()}`;
+    if (!projectId) setProjectId(pid);
+
     try {
       const res = await fetch(`${API_URL}/generate/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({
-          message: msg,
+          message:       baseMsg,
           previous_html: currentSite?.html || "",
           previous_css:  currentSite?.css  || "",
           previous_js:   currentSite?.js   || "",
           is_refinement: isRefinement,
+          project_id:    pid,
         }),
       });
 
@@ -156,7 +327,6 @@ ${site.html}
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop();
@@ -166,38 +336,46 @@ ${site.html}
           const raw = line.slice(6).trim();
           if (!raw) continue;
 
+          // ✅ BUG FIX 3: The original swallowed ALL errors with catch(_){}.
+          // This meant SSE parse errors and server errors were silently dropped,
+          // so the user just saw a spinner forever. Now errors are surfaced.
+          let event;
           try {
-            const event = JSON.parse(raw);
+            event = JSON.parse(raw);
+          } catch (parseErr) {
+            console.error("SSE parse error:", parseErr, "raw:", raw);
+            continue;
+          }
 
-            if (event.type === "chunk") {
-              charCount += event.text.length;
-              setStreamProgress(Math.min(90, Math.round((charCount / 5000) * 90)));
-            }
+          if (event.type === "chunk") {
+            charCount += event.text.length;
+            setStreamProgress(Math.min(90, Math.round((charCount / 5000) * 90)));
+          }
 
-            if (event.type === "done") {
-              const site = event.site;
-              setStreamProgress(100);
-              setCurrentSite(site);
+          if (event.type === "done") {
+            const site = event.site;
+            setStreamProgress(100);
+            setCurrentSite(site);
+            const newVersion = { ...site, prompt: baseMsg, timestamp: new Date() };
+            setVersions((prev) => [...prev, newVersion]);
+            setActiveVersion(newVersion);
+            setActiveTab("preview");
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                text: isRefinement
+                  ? `✅ Updated! Changes applied to your site.`
+                  : `✅ Built **${site.title}**! Check it out on the right — all sections are live and interactive.`,
+                site,
+              },
+            ]);
+            loadProjects();
+          }
 
-              const newVersion = { ...site, prompt: baseMsg, timestamp: new Date() };
-              setVersions((prev) => [...prev, newVersion]);
-              setActiveVersion(newVersion);
-              setActiveTab("preview");
-
-              setMessages((prev) => [
-                ...prev,
-                {
-                  role: "assistant",
-                  text: isRefinement
-                    ? `✅ Updated! Changes applied. Keep refining or download when ready.`
-                    : `✅ Built **${site.title}**! All buttons and links are fully interactive in the preview.`,
-                  site,
-                },
-              ]);
-            }
-
-            if (event.type === "error") throw new Error(event.message);
-          } catch (_) {}
+          if (event.type === "error") {
+            throw new Error(event.message);
+          }
         }
       }
     } catch (err) {
@@ -215,9 +393,27 @@ ${site.html}
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const handleVersionClick = (v) => {
-    setActiveVersion(v);
-    setCurrentSite(v);
+  const openProject = async (proj) => {
+    try {
+      const res = await fetch(`${API_URL}/projects/${proj.id}`, { headers: authHeaders });
+      if (!res.ok) return;
+      const full = await res.json();
+      setCurrentSite({ title: full.title, html: full.html, css: full.css, js: full.js });
+      setProjectId(full.id);
+      setVersions([{ title: full.title, html: full.html, css: full.css, js: full.js, prompt: full.prompt }]);
+      setMessages([
+        { role: "assistant", text: "Hi! I'm WebWeave, your intelligent website creation partner. Tell me your project goal, and I'll build it instantly!" },
+        { role: "user",      text: full.prompt || "Loaded project" },
+        { role: "assistant", text: `✅ Loaded **${full.title}**. Continue refining or start a new project.` },
+      ]);
+      setActiveTab("preview");
+    } catch (_) {}
+  };
+
+  const deleteProject = async (e, proj) => {
+    e.stopPropagation();
+    await fetch(`${API_URL}/projects/${proj.id}`, { method: "DELETE", headers: authHeaders });
+    setProjects((prev) => prev.filter((p) => p.id !== proj.id));
   };
 
   const handleNewSite = () => {
@@ -225,50 +421,91 @@ ${site.html}
     setVersions([]);
     setActiveVersion(null);
     setActiveTab("preview");
-    setNavActive("new");
+    setProjectId(null);
     setMessages([{ role: "assistant", text: "Starting fresh! Describe your next website." }]);
   };
 
-  const copyCode = () => {
-    if (currentSite) navigator.clipboard.writeText(buildFullHTML(currentSite));
+  const downloadSite = () => {
+    if (!currentSite) return;
+    const blob = new Blob([buildFullHTML(currentSite)], { type: "text/html" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `${currentSite.title.replace(/\s+/g, "-").toLowerCase()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const currentDevice = DEVICES.find((d) => d.id === device);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
 
-      {/* ── Sidebar ── */}
+      {/* ════════════════ HISTORY SIDEBAR ════════════════ */}
       <aside className="sidebar">
         <div className="sidebar-logo">
           <span className="sidebar-logo-icon">W</span>
+          <span className="sidebar-logo-text">WebWeave</span>
         </div>
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            className={`sidebar-nav-btn ${navActive === item.id ? "sidebar-nav-btn--active" : ""}`}
-            onClick={() => { setNavActive(item.id); if (item.id === "new") handleNewSite(); }}
-            title={item.label}
-          >
-            <span className="sidebar-nav-icon">{item.icon}</span>
-            <span className="sidebar-nav-label">{item.label}</span>
-          </button>
-        ))}
-        <div className="sidebar-spacer" />
-        <button className="sidebar-nav-btn" title="Help">
-          <span className="sidebar-nav-icon">?</span>
-          <span className="sidebar-nav-label">Help</span>
+
+        <button className="sidebar-new-btn" onClick={handleNewSite}>
+          <span>✦</span> New Project
         </button>
+
+        <div className="sidebar-section-label">Recent Projects</div>
+
+        <div className="sidebar-history">
+          {historyLoading && <div className="sidebar-history-loading">Loading…</div>}
+          {!historyLoading && projects.length === 0 && (
+            <div className="sidebar-history-empty">No projects yet.<br/>Build your first site!</div>
+          )}
+          {projects.map((proj) => (
+            <button
+              key={proj.id}
+              className={`sidebar-history-item ${projectId === proj.id ? "sidebar-history-item--active" : ""}`}
+              onClick={() => openProject(proj)}
+            >
+              <span className="sidebar-history-icon">🌐</span>
+              <div className="sidebar-history-info">
+                <span className="sidebar-history-title">{proj.title || "Untitled"}</span>
+                <span className="sidebar-history-date">
+                  {proj.updated_at ? new Date(proj.updated_at).toLocaleDateString() : ""}
+                </span>
+              </div>
+              <button
+                className="sidebar-history-del"
+                onClick={(e) => deleteProject(e, proj)}
+                title="Delete"
+              >✕</button>
+            </button>
+          ))}
+        </div>
+
+        <div className="sidebar-spacer" />
+
+        <div className="sidebar-user" onClick={() => setUserMenuOpen((o) => !o)}>
+          {user.avatar
+            ? <img src={user.avatar} alt={user.name} className="sidebar-user-avatar" />
+            : <div className="sidebar-user-avatar sidebar-user-avatar--fallback">{user.name?.[0]?.toUpperCase()}</div>
+          }
+          <div className="sidebar-user-info">
+            <span className="sidebar-user-name">{user.name}</span>
+            <span className="sidebar-user-email">{user.email}</span>
+          </div>
+          <span className="sidebar-user-caret">⌄</span>
+        </div>
+        {userMenuOpen && (
+          <div className="sidebar-user-menu">
+            <button onClick={onLogout}>Sign out</button>
+          </div>
+        )}
       </aside>
 
-      {/* ── Main wrapper ── */}
+      {/* ════════════════ RIGHT SIDE ════════════════ */}
       <div className="app-inner">
 
-        {/* ── Header ── */}
         <header className="header">
           <div className="header-left">
-            {/* Step progress */}
             <div className="step-progress">
               {["Project Setup", "Structure", "Content", "Design"].map((step, i) => (
                 <div key={step} className={`step ${i === 0 ? "step--done" : i === 1 && currentSite ? "step--done" : i === 1 ? "step--active" : i === 2 && currentSite ? "step--active" : ""}`}>
@@ -289,45 +526,26 @@ ${site.html}
                       className={`device-btn ${device === d.id ? "device-btn--active" : ""}`}
                       onClick={() => setDevice(d.id)}
                       title={d.label}
-                    >
-                      {d.icon}
-                    </button>
+                    >{d.icon}</button>
                   ))}
                 </div>
-                <button className="btn btn-ghost" onClick={copyCode}>Copy</button>
-                <button className="btn btn-ghost btn-download" onClick={() => {
-                  if (!currentSite) return;
-                  const blob = new Blob([buildFullHTML(currentSite)], { type: "text/html" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${currentSite.title.replace(/\s+/g, "-").toLowerCase()}.html`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}>↓ Download</button>
+                <button className="btn btn-ghost" onClick={() => navigator.clipboard.writeText(buildFullHTML(currentSite))}>Copy</button>
+                <button className="btn btn-ghost btn-download" onClick={downloadSite}>↓ Download</button>
                 <button className="btn btn-primary" onClick={handleNewSite}>+ New</button>
               </>
             )}
-            {/* Notification bell */}
             <button className="notif-btn" title="Notifications">🔔</button>
           </div>
         </header>
 
         <div className="main">
 
-          {/* ── Chat Panel ── */}
+          {/* ════════════════ CHAT PANEL ════════════════ */}
           <div className="chat-panel">
 
-            {/* AI assistant header */}
             <div className="chat-ai-header">
               <div className="ai-avatar-wrap">
-                <img
-                  className="ai-avatar"
-                  src="https://images.unsplash.com/photo-1676299081847-3f0b4b2e5e5e?w=80&h=80&q=80&fit=crop&crop=face"
-                  alt="AI"
-                  onError={(e) => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
-                />
-                <div className="ai-avatar-fallback">W</div>
+                <div className="ai-avatar-fallback" style={{ display: "flex" }}>W</div>
               </div>
               <div>
                 <div className="ai-name">WebWeave AI Assistant</div>
@@ -335,21 +553,23 @@ ${site.html}
               </div>
             </div>
 
-            {/* Messages */}
             <div className="messages">
               {messages.map((m, i) => (
                 <div key={i} className={`message message--${m.role} ${m.isError ? "message--error" : ""}`}>
-                  {m.role === "assistant" && (
-                    <div className="avatar">
-                      <span>W</span>
-                    </div>
-                  )}
+                  {m.role === "assistant" && <div className="avatar"><span>W</span></div>}
                   <div className="bubble">
                     {m.text.split("**").map((part, j) =>
                       j % 2 === 1 ? <strong key={j}>{part}</strong> : part
                     )}
                   </div>
-                  {m.role === "user" && <div className="avatar avatar--user">U</div>}
+                  {m.role === "user" && (
+                    <div className="avatar avatar--user">
+                      {user.avatar
+                        ? <img src={user.avatar} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                        : user.name?.[0]?.toUpperCase()
+                      }
+                    </div>
+                  )}
                 </div>
               ))}
 
@@ -370,23 +590,16 @@ ${site.html}
               <div ref={messagesEndRef} />
             </div>
 
-
-            {/* Example prompts */}
             {!currentSite && !isLoading && (
               <div className="examples">
                 {EXAMPLE_PROMPTS.map((p, i) => (
-                  <button
-                    key={i}
-                    className="example-chip"
-                    onClick={() => handleSend(p.label)}
-                  >
+                  <button key={i} className="example-chip" onClick={() => handleSend(p.label)}>
                     {p.emoji} {p.label}
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Version history */}
             {versions.length > 1 && (
               <div className="versions">
                 <p className="versions-label">Version history</p>
@@ -395,7 +608,7 @@ ${site.html}
                     <button
                       key={i}
                       className={`version-chip ${activeVersion === v ? "active" : ""}`}
-                      onClick={() => handleVersionClick(v)}
+                      onClick={() => { setActiveVersion(v); setCurrentSite(v); }}
                     >
                       v{i + 1}: {v.prompt.slice(0, 22)}…
                     </button>
@@ -404,16 +617,13 @@ ${site.html}
               </div>
             )}
 
-            {/* Input */}
             <div className="input-area">
               <textarea
                 className="input-box"
                 rows={2}
-                placeholder={
-                  currentSite
-                    ? "Refine: change colors, add section, update text…"
-                    : "Describe the website you want to build…"
-                }
+                placeholder={currentSite
+                  ? "Refine: change colors, add section, update text…"
+                  : "e.g., coffee shop landing page"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -429,11 +639,10 @@ ${site.html}
             </div>
           </div>
 
-          {/* ── Right Panel: Preview / Code ── */}
+          {/* ════════════════ PREVIEW PANEL ════════════════ */}
           <div className="preview-panel">
             {currentSite ? (
               <>
-                {/* Tab bar */}
                 <div className="preview-tabs">
                   <div className="preview-tab-group">
                     {["preview", "html", "css", "js"].map((tab) => (
@@ -441,20 +650,17 @@ ${site.html}
                         key={tab}
                         className={`tab ${activeTab === tab ? "tab--active" : ""}`}
                         onClick={() => setActiveTab(tab)}
-                      >
-                        {tab.toUpperCase()}
-                      </button>
+                      >{tab.toUpperCase()}</button>
                     ))}
                   </div>
                   <div className="site-title-badge">{currentSite.title}</div>
                 </div>
 
-                {/* Preview */}
                 {activeTab === "preview" && (
                   <div className="preview-viewport">
                     <div className="preview-frame-wrapper" style={{ width: currentDevice.width }}>
                       <iframe
-                        key={activeVersion}
+                        key={previewUrl}
                         className="preview-frame"
                         title="Generated Site"
                         src={previewUrl || "about:blank"}
@@ -464,7 +670,6 @@ ${site.html}
                   </div>
                 )}
 
-                {/* Code view */}
                 {activeTab !== "preview" && (
                   <pre className="code-view">
                     <code>
@@ -490,4 +695,28 @@ ${site.html}
   );
 }
 
-export default App;
+// ══════════════════════════════════════════════════════════════════════════
+// ROOT
+// ══════════════════════════════════════════════════════════════════════════
+export default function App() {
+  const [user,  setUser]  = useState(() => storage.get("ww_user"));
+  const [token, setToken] = useState(() => storage.get("ww_token"));
+
+  const handleAuth = (u, t) => { setUser(u); setToken(t); };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (_) {}
+    storage.remove("ww_token");
+    storage.remove("ww_user");
+    setUser(null);
+    setToken(null);
+  };
+
+  if (!user || !token) return <AuthPage onAuth={handleAuth} />;
+  return <MainApp user={user} token={token} onLogout={handleLogout} />;
+}
