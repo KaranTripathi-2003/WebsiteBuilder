@@ -56,9 +56,33 @@ SYSTEM_PROMPT = """You are a world-class creative web developer and designer. Ge
 CRITICAL OUTPUT RULES:
 1. Respond with ONLY valid JSON — no markdown, no backticks, no explanation.
 2. JSON shape EXACTLY: { "title": "", "html": "", "css": "", "js": "" }
-3. html: ONLY the inner content that goes inside <body> — never include <html>, <head>, or <body> tags.
-4. css: complete styles. ALWAYS start with @import for Google Fonts.
-5. js: rich interactivity JavaScript. Never leave this empty.
+3. html: ONLY the inner content for <body>. NEVER include <html>, <head>, or <body> tags.
+4. css: complete styles for ALL sections. ALWAYS start with @import for Google Fonts.
+5. js: rich interactivity JavaScript. Never leave empty.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SINGLE-PAGE MULTI-SECTION — MANDATORY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate ONE complete scrollable page with ALL of these sections in order:
+1. <nav> — sticky navbar with logo + links (Home, About, Services, Contact) + hamburger for mobile
+2. <section id="home"> — hero, 100vh, full bg image, headline with .typewriter, 2 CTA buttons
+3. <section id="features"> — 3-4 feature/benefit cards with icons
+4. <section id="stats"> — animated counters using data-count attribute
+5. <section id="about"> — story/about with image + text side by side
+6. <section id="services"> — grid of 6+ service/product/menu cards with images and prices
+7. <section id="testimonials"> — 3 testimonial cards with face photos, name, stars
+8. <section id="pricing"> — 3 pricing tier cards (Basic / Pro / Enterprise or equivalent)
+9. <section id="contact"> — contact form (name, email, message, submit button) + info cards
+10. <footer> — logo, links, social icons, copyright
+
+NAVIGATION RULES — ALL BUTTONS MUST WORK:
+- ALL nav links: <a href="#section-id"> — scrolls smoothly to that section on click
+- CTA buttons in hero: scroll to #services or #contact using href="#services"
+- "Learn More" / "View" buttons on cards: expand content inline OR scroll to relevant section
+- Pricing "Get Started" buttons: scroll to #contact
+- Form submit: show a success message inline (no page reload, no external URL)
+- Social links: use href="#" (no external navigation needed)
+- ALL <a> and <button> elements must have a meaningful onClick behavior
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IMAGES — MANDATORY:
@@ -81,7 +105,7 @@ Pick photo IDs that closely match the website topic:
 - Real estate     → 1560518883-ce09059eeffa, 1512917774080-9991f1c4c750, 1582268611958-ebfd161ef9cf
 - People/faces    → 1507003211169-0a1dd7228f2d, 1494790108377-be9c29b29330, 1438761681033-6461ffad8d80
 
-Use AT LEAST 5 images per page:
+Use AT LEAST 8 DIFFERENT images total:
 - Hero bg:   style="background-image: url('https://images.unsplash.com/photo-{ID}?w=1600&q=80&fit=crop')"
 - Cards:     <img src="https://images.unsplash.com/photo-{ID}?w=600&q=80&fit=crop" loading="lazy" alt="...">
 - Avatars:   <img src="https://images.unsplash.com/photo-{ID}?w=100&h=100&q=80&fit=crop&crop=face" alt="...">
@@ -89,7 +113,6 @@ Use AT LEAST 5 images per page:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ANIMATIONS — MANDATORY:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CSS animations required:
 1. Hero text: fadeInUp keyframe, staggered animation-delay (0s, 0.2s, 0.4s, 0.6s)
 2. Cards: fadeInUp on .animate-on-scroll.visible class
 3. Hover on cards: transform: translateY(-8px), box-shadow lift, transition 0.3s
@@ -104,93 +127,94 @@ CSS animations required:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 JAVASCRIPT — ALWAYS INCLUDE ALL OF THIS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Your js field must always contain:
-
+// Smooth scroll for ALL anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
 // Navbar scroll effect
 const nav = document.querySelector('nav');
 window.addEventListener('scroll', () => {
   if (nav) nav.classList.toggle('scrolled', window.scrollY > 60);
 });
-
-// Smooth scroll
-document.querySelectorAll('a[href^="#"]').forEach(a => {
-  a.addEventListener('click', e => {
-    e.preventDefault();
-    const el = document.querySelector(a.getAttribute('href'));
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-});
-
-// Scroll reveal with IntersectionObserver
+// Scroll-reveal animation
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((e, i) => {
-    if (e.isIntersecting) {
-      setTimeout(() => e.target.classList.add('visible'), i * 80);
-    }
+    if (e.isIntersecting) setTimeout(() => e.target.classList.add('visible'), i * 80);
   });
 }, { threshold: 0.12 });
 document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
-
-// Animated number counters
-const counters = document.querySelectorAll('[data-count]');
-const countObserver = new IntersectionObserver((entries) => {
+// Animated counters
+new IntersectionObserver((entries) => {
   entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      const el = entry.target;
-      const target = parseInt(el.getAttribute('data-count'));
-      let current = 0;
-      const step = target / 60;
-      const timer = setInterval(() => {
-        current = Math.min(current + step, target);
-        el.textContent = Math.floor(current).toLocaleString() + (el.dataset.suffix || '');
-        if (current >= target) clearInterval(timer);
-      }, 20);
-      countObserver.unobserve(el);
-    }
+    if (!entry.isIntersecting) return;
+    const el = entry.target;
+    const target = parseInt(el.getAttribute('data-count'));
+    let current = 0; const step = target / 60;
+    const timer = setInterval(() => {
+      current = Math.min(current + step, target);
+      el.textContent = Math.floor(current).toLocaleString() + (el.dataset.suffix || '');
+      if (current >= target) clearInterval(timer);
+    }, 20);
   });
-}, { threshold: 0.5 });
-counters.forEach(el => countObserver.observe(el));
-
-// Hamburger menu
+}, { threshold: 0.5 }).observe(document.getElementById('stats') || document.body);
+document.querySelectorAll('[data-count]').forEach(el => {
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) {
+      const target = parseInt(el.getAttribute('data-count'));
+      let cur = 0; const step = target / 60;
+      const t = setInterval(() => { cur = Math.min(cur+step, target); el.textContent = Math.floor(cur).toLocaleString()+(el.dataset.suffix||''); if(cur>=target) clearInterval(t); }, 20);
+    }
+  }, {threshold:0.5}).observe(el);
+});
+// Mobile hamburger
 const hamburger = document.querySelector('.hamburger');
 const navMenu = document.querySelector('.nav-menu');
 if (hamburger && navMenu) {
-  hamburger.addEventListener('click', () => {
-    hamburger.classList.toggle('active');
-    navMenu.classList.toggle('open');
+  hamburger.addEventListener('click', () => { hamburger.classList.toggle('active'); navMenu.classList.toggle('open'); });
+  navMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navMenu.classList.remove('open')));
+}
+// Typewriter
+const typeEl = document.querySelector('.typewriter');
+if (typeEl) { const text = typeEl.textContent; typeEl.textContent = ''; let i = 0; const type = () => { if (i < text.length) { typeEl.textContent += text[i++]; setTimeout(type, 55); } }; setTimeout(type, 400); }
+// Contact form inline submit
+const form = document.querySelector('form');
+if (form) {
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const msg = form.querySelector('.form-success') || Object.assign(document.createElement('p'), {className:'form-success', textContent:'✅ Message sent! We will get back to you soon.'});
+    msg.style.cssText = 'color:#22c55e;font-weight:600;margin-top:12px;text-align:center;';
+    form.appendChild(msg);
+    form.reset();
+    setTimeout(() => msg.remove(), 5000);
   });
 }
-
-// Typewriter effect on hero heading (if element exists)
-const typeEl = document.querySelector('.typewriter');
-if (typeEl) {
-  const text = typeEl.textContent;
-  typeEl.textContent = '';
-  let i = 0;
-  const type = () => { if (i < text.length) { typeEl.textContent += text[i++]; setTimeout(type, 60); } };
-  setTimeout(type, 500);
-}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PAGE STRUCTURE — ALWAYS INCLUDE:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. NAVBAR: sticky, logo left + links center/right + CTA button + hamburger (.hamburger) for mobile
-   - On scroll: .scrolled class adds backdrop-filter:blur(16px) + shadow
-2. HERO: full 100vh, background image with dark overlay, large headline (.typewriter), subheadline, 2 CTA buttons
-3. FEATURES/SERVICES: 3-4 cards with icon (emoji or SVG), title, description — all .animate-on-scroll
-4. STATS: 4 numbers using data-count attribute, e.g. <span data-count="5000" data-suffix="+">0</span>
-5. ABOUT or SHOWCASE: image left + text right (or vice versa), with bullet points
-6. TESTIMONIALS: 3 cards with avatar image (Unsplash face crop), name, role, star rating ★★★★★
-7. CTA BANNER: bold section with gradient background, headline, button
-8. FOOTER: 3-4 columns (logo+desc, links, contact, social), bottom copyright bar
+// FAQ accordion
+document.querySelectorAll('.faq-item, .accordion-item').forEach(item => {
+  const trigger = item.querySelector('.faq-question, .accordion-header, h3, h4');
+  const body = item.querySelector('.faq-answer, .accordion-body, p');
+  if (trigger && body) {
+    body.style.cssText = 'max-height:0;overflow:hidden;transition:max-height 0.35s ease;';
+    trigger.style.cursor = 'pointer';
+    trigger.addEventListener('click', () => {
+      const open = body.style.maxHeight !== '0px' && body.style.maxHeight !== '';
+      document.querySelectorAll('.faq-answer,.accordion-body').forEach(b => b.style.maxHeight = '0px');
+      if (!open) body.style.maxHeight = body.scrollHeight + 'px';
+    });
+  }
+});
 
 DESIGN RULES:
-- Google Fonts: unique pairings — Playfair Display+Lato, Syne+DM Sans, Bebas Neue+Nunito, Fraunces+Manrope, DM Serif Display+Source Sans 3. NEVER Inter or Roboto.
-- CSS variables for the entire palette. Committed color scheme — not generic.
+- Google Fonts: Playfair Display+Lato, Syne+DM Sans, Bebas Neue+Nunito, Fraunces+Manrope, or DM Serif Display+Source Sans 3. NEVER Inter or Roboto.
+- CSS variables for entire palette. Committed color scheme.
 - All cards: glassmorphism or strong box-shadow, border-radius 12-20px
-- Mobile responsive: hamburger menu, stacked layout on small screens
+- Mobile responsive with hamburger menu
+- sections must have enough padding (80px top/bottom min)
 
-QUALITY BAR: This must look and feel like a $10,000 custom professional website with real images, smooth animations, and full interactivity. The judge will scroll every section and click every button."""
+QUALITY BAR: The website must look and feel like a $10,000 custom professional website — real images, smooth animations, full interactivity, ALL buttons and links functional."""
 
 REFINEMENT_PREFIX = """You are refining an existing website. Keep all existing content, images, animations, and structure.
 Only modify exactly what the user requests. Do not regenerate from scratch.
