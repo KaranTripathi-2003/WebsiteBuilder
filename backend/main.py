@@ -65,6 +65,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"), timeout=120.0)  # increased timeout
