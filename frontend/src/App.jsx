@@ -43,7 +43,7 @@ function App() {
 </head>
 <body>
 ${site.html}
-<script>${site.js}<\/script>
+<script>${site.js}</` + `script>
 </body>
 </html>`;
   };
