@@ -54,6 +54,7 @@ function App() {
   const [loadingStage,   setLoadingStage]   = useState(0);
   const [streamProgress, setStreamProgress] = useState(0);
   const [navActive,      setNavActive]      = useState("new");
+  const [previewUrl,     setPreviewUrl]     = useState(null);
 
   const messagesEndRef = useRef(null);
   const stageTimerRef  = useRef(null);
@@ -63,18 +64,40 @@ function App() {
   }, [messages]);
 
   const buildFullHTML = (site) => `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="referrer" content="no-referrer"/>
   <title>${site.title}</title>
-  <style>${site.css}</style>
+  <!-- Google Fonts preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <!-- Alpine.js CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"><\/script>
+  <style>${site.css}<\/style>
 </head>
 <body>
 ${site.html}
 <script>${site.js}<\/script>
 </body>
 </html>`;
+
+  // Build blob URL so external images + fonts load (srcDoc has null-origin which blocks them)
+  useEffect(() => {
+    if (!currentSite) {
+      setPreviewUrl(null);
+      return;
+    }
+    const html = buildFullHTML(currentSite);
+    const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSite]);
 
   const advanceLoadingStage = useCallback(() => {
     setLoadingStage(0);
@@ -434,8 +457,8 @@ ${site.html}
                         key={activeVersion}
                         className="preview-frame"
                         title="Generated Site"
-                        srcDoc={buildFullHTML(currentSite)}
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                        src={previewUrl || "about:blank"}
+                        sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
                       />
                     </div>
                   </div>
