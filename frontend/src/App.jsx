@@ -769,74 +769,82 @@ function MainApp({ user, token, onLogout }) {
 
             {/* Input area */}
             <div className="input-area">
-              {/* Image preview */}
-              {selectedImage && (
-                <div className="input-image-preview">
-                  <img src={selectedImage} alt="Upload preview" />
-                  <button className="input-image-remove" onClick={() => {
-                    setSelectedImage(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}>✕</button>
-                  <span className="input-image-label">Image will be used in the website</span>
+              <div className="input-container">
+                {/* Image preview (ChatGPT-style) */}
+                {selectedImage && (
+                  <div className="input-image-preview">
+                    <div className="input-image-card">
+                      <img src={selectedImage} alt="Upload preview" />
+                      <button 
+                        className="input-image-remove" 
+                        onClick={() => {
+                          setSelectedImage(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        title="Remove image"
+                      >✕</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="input-row">
+                  {/* Image upload button */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    style={{ display: "none" }}
+                  />
+                  <button
+                    className="input-attach-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach image — it will be used in your website"
+                    disabled={isLoading}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </button>
+
+                  <textarea
+                    ref={textareaRef}
+                    className="input-box"
+                    rows={1}
+                    placeholder={currentSite
+                      ? "Describe changes — e.g. 'Change the hero color to navy blue'..."
+                      : "Describe your website — business type, pages, style..."
+                    }
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                  />
+                  
+                  <button
+                    className={`send-btn ${isLoading ? "send-btn--loading" : ""}`}
+                    onClick={() => handleSend()}
+                    disabled={isLoading || (!input.trim() && !selectedImage)}
+                  >
+                    {isLoading ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spin">
+                        <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                      </svg>
+                    )}
+                  </button>
                 </div>
-              )}
-
-              <div className="input-row">
-                {/* Image upload button */}
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
-                  style={{ display: "none" }}
-                />
-                <button
-                  className="input-attach-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Attach image — it will be used in your website"
-                  disabled={isLoading}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                </button>
-
-                <textarea
-                  ref={textareaRef}
-                  className="input-box"
-                  rows={1}
-                  placeholder={currentSite
-                    ? "Describe changes — e.g. 'Change the hero color to navy blue' or 'Add a pricing section'"
-                    : "Describe your website — business type, pages, style, content…"
-                  }
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  disabled={isLoading}
-                />
-                <button
-                  className={`send-btn ${isLoading ? "send-btn--loading" : ""}`}
-                  onClick={() => handleSend()}
-                  disabled={isLoading || (!input.trim() && !selectedImage)}
-                >
-                  {isLoading ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spin">
-                      <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="22" y1="2" x2="11" y2="13"/>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                    </svg>
-                  )}
-                </button>
               </div>
               <div className="input-hint">
                 {currentSite
-                  ? "Shift+Enter for new line • Enter to send • Attach images to update visuals"
-                  : "Shift+Enter for new line • Enter to send • You can also attach a reference image"
+                  ? "Shift+Enter for new line • Enter to send"
+                  : "Shift+Enter for new line • Enter to send"
                 }
               </div>
             </div>
